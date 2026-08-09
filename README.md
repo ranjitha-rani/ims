@@ -1,4 +1,4 @@
-# InsureFlow — Insurance Management System
+# InsureFlow - Insurance Management System
 
 Modern insurance platform for managing plans, policies, customers, and claims.
 
