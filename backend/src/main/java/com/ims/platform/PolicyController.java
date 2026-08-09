@@ -51,7 +51,9 @@ public class PolicyController {
     }
     @GetMapping
     List<PolicyView> list(@AuthenticationPrincipal ImsPrincipal principal) {
-        List<Policy> found=principal.role()==Role.ADMIN ? policies.findAll() : policies.findByCustomerId(principal.id());
+        List<Policy> found=principal.role()==Role.ADMIN
+            ? policies.findAll()
+            : policies.findByCustomerIdOrderByPurchasedAtDesc(principal.id());
         return found.stream().map(p -> PolicyView.from(p,users,plans)).toList();
     }
     @GetMapping("/{id}")
@@ -63,7 +65,7 @@ public class PolicyController {
     List<PaymentView> payments(@PathVariable UUID id, @AuthenticationPrincipal ImsPrincipal principal) {
         Policy p=policies.findById(id).orElseThrow(() -> new NotFoundException("Policy not found"));
         requireOwnerOrAdmin(p.customerId,principal);
-        return payments.findAll().stream().filter(x -> x.policyId.equals(id)).map(PaymentView::from).toList();
+        return payments.findByPolicyId(id).stream().map(PaymentView::from).toList();
     }
     private void requireOwnerOrAdmin(UUID owner, ImsPrincipal p) {
         if (p.role()!=Role.ADMIN && !owner.equals(p.id())) throw new AccessDeniedException("Not policy owner");

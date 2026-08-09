@@ -12,13 +12,16 @@ interface PlanRepository extends JpaRepository<Plan, UUID> {
     Optional<Plan> findByCode(String code);
 }
 interface PolicyRepository extends JpaRepository<Policy, UUID> {
-    List<Policy> findByCustomerId(UUID customerId);
+    List<Policy> findByCustomerIdOrderByPurchasedAtDesc(UUID customerId);
+    List<Policy> findByCustomerIdAndStatusOrderByPurchasedAtDesc(UUID customerId, String status);
 }
 interface PaymentRepository extends JpaRepository<Payment, UUID> {
     List<Payment> findByPolicyId(UUID policyId);
 }
 interface ClaimRepository extends JpaRepository<Claim, UUID> {
-    List<Claim> findByCustomerId(UUID customerId);
+    List<Claim> findByCustomerIdOrderByCreatedAtDesc(UUID customerId);
+    List<Claim> findByCustomerIdAndStatusOrderByCreatedAtDesc(UUID customerId, ClaimStatus status);
+    List<Claim> findByStatusOrderByUpdatedAtDesc(ClaimStatus status);
 }
 interface OutboxRepository extends JpaRepository<OutboxEvent, UUID> {
     @Query("select e from OutboxEvent e where e.publishedAt is null order by e.occurredAt")

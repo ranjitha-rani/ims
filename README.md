@@ -28,8 +28,9 @@ Payments in this demo are **simulated** and do not charge a real card.
 
 - Customer registration, login, plan browsing, policy purchase, and claim submission
 - Admin plan management, customer/policy views, and claim review workflow (review → approve/reject → mark paid) with notes
-- JWT auth, role-based access, password change
+- JWT access/refresh auth with role-based access (customer/admin), password change, and Redis-backed refresh-token revoke + login rate limiting
 - Transactional outbox + Kafka/Redpanda consumers for claim validation, notification logging, and audit
+- Composite PostgreSQL indexes for common claim/policy list filters (Flyway)
 - Prometheus/Grafana observability kept private on the VM
 - Public aggregate `/status` endpoint only (no metrics or admin surfaces exposed)
 - OCI Always Free hosting, Caddy HTTPS via sslip.io, Object Storage backups, budget alerts, and a self-hosted GitHub Actions runner
@@ -59,7 +60,8 @@ Public surfaces are limited to the frontend, `/api`, `/health`, and `/status`. G
 | --- | --- |
 | Frontend | React, TypeScript, Vite, GitHub Pages |
 | API | Java 21, Spring Boot, Spring Security, JWT |
-| Data | PostgreSQL, Flyway, Redis |
+| Data | PostgreSQL, Flyway (incl. composite indexes), Redis (token revoke + rate limit) |
+| Auth | JWT access/refresh tokens, Spring Security RBAC |
 | Events | Transactional outbox, Redpanda/Kafka |
 | Ops | Docker Compose, Caddy, Prometheus, Grafana |
 | Infra | Terraform (OCI Always Free; optional AWS ECS) |

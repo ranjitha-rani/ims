@@ -51,7 +51,9 @@ public class ClaimController {
     }
     @GetMapping
     List<ClaimView> list(@AuthenticationPrincipal ImsPrincipal principal) {
-        List<Claim> found=principal.role()==Role.ADMIN ? claims.findAll() : claims.findByCustomerId(principal.id());
+        List<Claim> found=principal.role()==Role.ADMIN
+            ? claims.findAll()
+            : claims.findByCustomerIdOrderByCreatedAtDesc(principal.id());
         return found.stream().map(c -> ClaimView.from(c,users,plans,policies)).toList();
     }
     @GetMapping("/{id}")

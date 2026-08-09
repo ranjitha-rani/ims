@@ -104,7 +104,7 @@ public class DemoDataController {
 
     private int ensurePolicy(UserAccount customer, UUID planId) {
         if (planId==null) return 0;
-        boolean exists=policies.findByCustomerId(customer.id).stream().anyMatch(p -> p.planId.equals(planId));
+        boolean exists=policies.findByCustomerIdOrderByPurchasedAtDesc(customer.id).stream().anyMatch(p -> p.planId.equals(planId));
         if (exists) return 0;
         Policy policy=policies.save(new Policy(customer.id,planId));
         Plan plan=plans.findById(planId).orElseThrow();
@@ -126,8 +126,8 @@ public class DemoDataController {
     private int ensureClaim(String email, String planCode, String description, BigDecimal amount, ClaimStatus target) {
         UserAccount customer=users.findByEmailIgnoreCase(email).orElseThrow();
         UUID planId=plans.findByCode(planCode).map(p -> p.id).orElseThrow();
-        Policy policy=policies.findByCustomerId(customer.id).stream().filter(p -> p.planId.equals(planId)).findFirst().orElseThrow();
-        if (!claims.findByCustomerId(customer.id).isEmpty()) return 0;
+        Policy policy=policies.findByCustomerIdOrderByPurchasedAtDesc(customer.id).stream().filter(p -> p.planId.equals(planId)).findFirst().orElseThrow();
+        if (!claims.findByCustomerIdOrderByCreatedAtDesc(customer.id).isEmpty()) return 0;
         Claim claim=claims.save(new Claim(policy.id,customer.id,description,amount));
         if (target!=ClaimStatus.SUBMITTED) claim.applyTransition(target,null);
         return 1;
