@@ -1,0 +1,69 @@
+name: Pull request CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint --if-present
+      - run: npm test --if-present
+      - run: npm run build
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Test Maven backend
+        run: ./mvnw --batch-mode test
+      - name: Build backend image
+        run: docker build -t ims-api:ci .
+
+  oci-compose:
+    name: OCI Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate OCI runtime Compose
+        run: |
+          if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+            echo "::notice::Docker Compose is unavailable; OCI Compose validation skipped."
+          elif test -f compose.oci.yaml; then
+            docker compose --env-file .env.oci.example -f compose.oci.yaml config --quiet
+            docker compose --env-file .env.oci.example \
+              -f compose.oci.yaml -f compose.oci-eventing.yaml \
+              --profile eventing config --quiet
+          else
+            echo "::notice::compose.oci.yaml is not present yet; validation skipped."
+          fi

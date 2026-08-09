@@ -1,0 +1,20 @@
+# Required: compartment or tenancy/root-compartment OCID.
+compartment_ocid = "ocid1.compartment.oc1..replace_me"
+
+# Required for backup instance-principal IAM. Find in OCI Console → Tenancy details.
+tenancy_ocid = "ocid1.tenancy.oc1..replace_me"
+
+# Required: restrict SSH to your current public IPv4 address.
+ssh_allowed_cidr = "203.0.113.10/32"
+
+# Optional defaults:
+# cors_allowed_origin    = "https://ranjitha-rani.github.io"
+# bootstrap_admin_email  = "admin@example.com"
+# budget_alert_email     = "ops@example.com"
+# enable_budget_alert    = true
+# budget_amount          = 1
+# region                = "us-phoenix-1"
+# availability_domain   = "xxxx:PHX-AD-1"
+# ssh_public_key_path    = "~/.ssh/id_ed25519.pub"
+# name_prefix            = "ims"
+# boot_volume_size_gbs   = 100

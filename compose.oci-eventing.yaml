@@ -1,0 +1,10 @@
+# Overlay for eventing. Use with:
+# docker compose -f compose.oci.yaml -f compose.oci-eventing.yaml --profile eventing up -d
+services:
+  api:
+    environment:
+      KAFKA_ENABLED: "true"
+      OUTBOX_ENABLED: "true"
+    depends_on:
+      redpanda:
+        condition: service_healthy

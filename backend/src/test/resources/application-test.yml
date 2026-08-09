@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ims;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+ims:
+  kafka:
+    enabled: false
+  redis:
+    enabled: false
+  jwt:
+    secret: test-secret-that-is-at-least-thirty-two-bytes-long
+    access-ttl: PT15M
+    refresh-ttl: P1D
+management:
+  health:
+    redis:
+      enabled: false

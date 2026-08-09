@@ -1,0 +1,58 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - ca-certificates
+  - curl
+  - docker.io
+  - docker-compose-v2
+  - git
+  - jq
+
+write_files:
+  - path: /opt/ims/.env
+    owner: root:root
+    permissions: "0600"
+    content: |
+      POSTGRES_DB=ims
+      POSTGRES_USER=ims
+      POSTGRES_PASSWORD=${database_password}
+      DATA_ROOT=/opt/ims/data
+      SSLIP_HOSTNAME=CONFIGURE_AFTER_APPLY
+      CORS_ALLOWED_ORIGINS=${cors_origin}
+      JWT_SECRET=${jwt_secret}
+      GRAFANA_ADMIN_USER=admin
+      GRAFANA_ADMIN_PASSWORD=${grafana_password}
+      IMS_BOOTSTRAP_ADMIN_EMAIL=${bootstrap_email}
+      IMS_BOOTSTRAP_ADMIN_PASSWORD=${bootstrap_password}
+      IMS_BOOTSTRAP_ADMIN_NAME=IMS Administrator
+      KAFKA_ENABLED=false
+      OUTBOX_ENABLED=false
+      REDIS_ENABLED=true
+      IMS_DEMO_ENABLED=true
+      IMS_DEMO_CUSTOMER_PASSWORD=${demo_customer_password}
+      OCI_BACKUP_URI=${oci_backup_uri}
+      OCI_NAMESPACE=${oci_namespace}
+      OCI_CLI_AUTH=instance_principal
+      BACKUP_RETENTION_DAYS=7
+  - path: /opt/ims/README.bootstrap
+    owner: root:root
+    permissions: "0644"
+    content: |
+      OCI host preparation is complete.
+      Deploy the repository content or a production Compose bundle into /opt/ims.
+      Keep /opt/ims/.env root-readable only and use /opt/ims/data for persistent data.
+      Docker Compose is available as: docker compose
+
+runcmd:
+  - [mkdir, -p, /opt/ims/data/postgres, /opt/ims/data/redis, /opt/ims/data/redpanda, /opt/ims/data/prometheus, /opt/ims/data/grafana]
+  - [chown, -R, "ubuntu:ubuntu", /opt/ims]
+  - [chown, -R, "101:101", /opt/ims/data/redpanda]
+  - [chown, -R, "65534:65534", /opt/ims/data/prometheus]
+  - [chown, -R, "472:472", /opt/ims/data/grafana]
+  - [chown, "root:root", /opt/ims/.env]
+  - [chmod, "0600", /opt/ims/.env]
+  - [systemctl, enable, --now, docker]
+  - [usermod, -aG, docker, ubuntu]
+
+final_message: "IMS OCI host preparation completed after $UPTIME seconds."

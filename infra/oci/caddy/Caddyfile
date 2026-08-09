@@ -1,0 +1,43 @@
+{
+	# Keep the admin API private; it is used only by the container health check.
+	admin localhost:2019
+}
+
+{$SSLIP_HOSTNAME} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Expose only the aggregate health response, not arbitrary actuator endpoints.
+	handle /health {
+		rewrite * /actuator/health
+		reverse_proxy api:8080
+	}
+
+	# Public operational status without exposing actuator, metrics, or admin surfaces.
+	handle /status {
+		rewrite * /api/public/status
+		reverse_proxy api:8080
+	}
+
+	handle /api* {
+		reverse_proxy api:8080
+	}
+
+	# Explicitly deny metrics, management, and administrative URL spaces.
+	@private path /actuator* /metrics* /admin* /prometheus* /grafana*
+	respond @private 404
+
+	respond 404
+
+	log {
+		output stdout
+		format json
+	}
+}

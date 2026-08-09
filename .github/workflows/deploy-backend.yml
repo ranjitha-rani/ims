@@ -1,0 +1,62 @@
+name: Deploy backend to ECS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push immutable image
+        id: image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          image="$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          if aws ecr describe-images --repository-name "$REPOSITORY" --image-ids "imageTag=$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Reusing existing immutable image $image"
+          else
+            docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$image" .
+            docker push "$image"
+          fi
+          echo "uri=$image" >> "$GITHUB_OUTPUT"
+      - name: Download current task definition
+        env:
+          TASK_FAMILY: ${{ vars.ECS_TASK_FAMILY }}
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_FAMILY" \
+            --query taskDefinition > "$RUNNER_TEMP/task-definition.json"
+      - id: task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ runner.temp }}/task-definition.json
+          container-name: api
+          image: ${{ steps.image.outputs.uri }}
+      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-definition.outputs.task-definition }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          service: ${{ vars.ECS_SERVICE }}
+          wait-for-service-stability: true

@@ -1,0 +1,117 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Type APPLY to apply the reviewed plan"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: Check formatting
+        run: terraform fmt -check -recursive infra
+      - name: Validate bootstrap
+        working-directory: infra/bootstrap
+        run: terraform init -backend=false && terraform validate
+      - name: Validate application stack
+        working-directory: infra/terraform
+        run: terraform init -backend=false && terraform validate
+
+  plan:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_environment: ${{ vars.TF_ENVIRONMENT || 'dev' }}
+      TF_VAR_api_image_tag: bootstrap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: ${{ env.AWS_ROLE_ARN != '' }}
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Plan
+        if: ${{ env.AWS_ROLE_ARN != '' }}
+        working-directory: infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/$TF_VAR_environment/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+          terraform plan -no-color -out=tfplan
+      - name: Explain skipped plan
+        if: ${{ env.AWS_ROLE_ARN == '' }}
+        run: echo "::notice::Plan skipped because AWS_TERRAFORM_ROLE_ARN is unavailable."
+
+  apply:
+    needs: [validate, plan]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.apply == 'APPLY' }}
+    runs-on: ubuntu-latest
+    environment: infrastructure-production
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+      TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+      TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_environment: ${{ vars.TF_ENVIRONMENT || 'dev' }}
+      TF_VAR_api_image_tag: bootstrap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Recreate and apply plan after approval
+        working-directory: infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=environments/$TF_VAR_environment/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan

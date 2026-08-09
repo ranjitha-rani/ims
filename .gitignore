@@ -1,0 +1,36 @@
+.DS_Store
+.env
+*.local
+
+# Application build output
+backend/build/
+backend/target/
+backend/node_modules/
+frontend/dist/
+frontend/node_modules/
+
+# Terraform local and sensitive files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+*.pem
+*.key
+*.dump
+*.backup
+oci_config
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# IDE and runtime files
+.idea/
+.vscode/
+*.iml
+*.log
+__pycache__/
+*.py[cod]

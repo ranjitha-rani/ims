@@ -1,0 +1,23 @@
+project_name      = "ims"
+environment       = "dev"
+aws_region        = "us-east-1"
+api_image_tag     = "bootstrap"
+github_repository = "your-org/ims"
+cors_allowed_origins = "https://your-org.github.io"
+
+# Set through a protected, ignored tfvars file or TF_VAR environment variable.
+# Leave empty to disable bootstrap after the first administrator is established.
+bootstrap_admin_email = ""
+
+# Enable only after confirming no GitHub OIDC provider already exists in the account.
+create_github_oidc_provider = false
+
+# Production recommendations:
+# api_desired_count      = 2
+# db_multi_az            = true
+# db_deletion_protection = true
+# certificate_arn        = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+# enable_redis           = true
+# enable_kafka           = true
+# kafka_bootstrap_servers = "broker.example.com:9092"
+# alarm_email            = "oncall@example.com"

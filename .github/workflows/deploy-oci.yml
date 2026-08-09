@@ -1,0 +1,115 @@
+name: Deploy to OCI VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner to use. Prefer self-hosted on the OCI VM; GitHub-hosted runners cannot reach a restricted SSH endpoint.
+        required: false
+        default: ubuntu-latest
+        type: choice
+        options:
+          - self-hosted
+          - ubuntu-latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oci-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    environment: oci-production
+    env:
+      OCI_VM_HOST: ${{ secrets.OCI_VM_HOST }}
+      OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+      OCI_SSH_USER: ${{ vars.OCI_SSH_USER || 'ubuntu' }}
+      OCI_PUBLIC_HOST: ${{ vars.OCI_PUBLIC_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify deployment inputs
+        run: |
+          test -n "$OCI_VM_HOST" || { echo "::error::OCI_VM_HOST is required"; exit 1; }
+          test -n "$OCI_SSH_PRIVATE_KEY" || { echo "::error::OCI_SSH_PRIVATE_KEY is required"; exit 1; }
+          [[ "$OCI_VM_HOST" =~ ^[0-9a-fA-F:.]+$ ]] || { echo "::error::OCI_VM_HOST must be an IP address"; exit 1; }
+          if [ -n "$OCI_PUBLIC_HOST" ]; then
+            [[ "$OCI_PUBLIC_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "::error::OCI_PUBLIC_HOST is invalid"; exit 1; }
+          fi
+          test -f compose.oci.yaml || {
+            echo "::error::compose.oci.yaml is required before OCI deployment can run"
+            exit 1
+          }
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > "$HOME/.ssh/oci"
+          chmod 600 "$HOME/.ssh/oci"
+          ssh-keyscan -H "$OCI_VM_HOST" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Package and upload runtime
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='backend/target' \
+            --exclude='**/.terraform' \
+            -czf "$RUNNER_TEMP/ims-runtime.tgz" \
+            backend infra/oci observability compose.oci.yaml compose.oci-eventing.yaml
+          scp -i "$HOME/.ssh/oci" "$RUNNER_TEMP/ims-runtime.tgz" \
+            "$OCI_SSH_USER@$OCI_VM_HOST:/tmp/ims-runtime.tgz"
+
+      - name: Build API natively and deploy
+        run: |
+          public_host="${OCI_PUBLIC_HOST:-ims.${OCI_VM_HOST}.sslip.io}"
+          ssh -i "$HOME/.ssh/oci" "$OCI_SSH_USER@$OCI_VM_HOST" \
+            "GITHUB_SHA='$GITHUB_SHA' PUBLIC_HOST='$public_host' bash -se" <<'REMOTE'
+          set -euo pipefail
+          release="$HOME/ims/releases/${GITHUB_SHA}"
+          mkdir -p "$release"
+          tar -xzf /tmp/ims-runtime.tgz -C "$release"
+          rm -f /tmp/ims-runtime.tgz
+          cd "$release"
+
+          if sudo grep -q '^SSLIP_HOSTNAME=' /opt/ims/.env; then
+            sudo sed -i "s/^SSLIP_HOSTNAME=.*/SSLIP_HOSTNAME=${PUBLIC_HOST}/" /opt/ims/.env
+          else
+            printf 'SSLIP_HOSTNAME=%s\n' "$PUBLIC_HOST" | sudo tee -a /opt/ims/.env >/dev/null
+          fi
+
+          # The Dockerfile's Maven and image build runs on Ampere A1 as native ARM64.
+          compose_args=(
+            --env-file /opt/ims/.env
+            -f compose.oci.yaml
+            -f compose.oci-eventing.yaml
+            --profile eventing
+            --profile observability
+          )
+          sudo docker compose "${compose_args[@]}" build api
+          sudo docker compose "${compose_args[@]}" up -d --remove-orphans
+          ln -sfn "$release" "$HOME/ims/current"
+          sudo docker image prune -f
+          REMOTE
+
+      - name: Check HTTPS health
+        run: |
+          public_host="${OCI_PUBLIC_HOST:-ims.${OCI_VM_HOST}.sslip.io}"
+          url="https://${public_host}/health"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 10 "$url" >/dev/null; then
+              echo "Healthy: $url"
+              exit 0
+            fi
+            echo "Waiting for $url ($attempt/30)"
+            sleep 10
+          done
+          echo "::error::HTTPS health check failed: $url"
+          exit 1
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/oci"

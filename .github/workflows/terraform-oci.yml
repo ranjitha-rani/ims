@@ -1,0 +1,109 @@
+name: OCI Terraform
+
+on:
+  pull_request:
+    paths:
+      - "infra/oci/**/*.tf"
+      - "infra/oci/terraform/.terraform.lock.hcl"
+      - ".github/workflows/terraform-oci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/oci/**/*.tf"
+      - "infra/oci/terraform/.terraform.lock.hcl"
+      - ".github/workflows/terraform-oci.yml"
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: "Run an OCI plan using repository secrets"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: Check whether the OCI module exists
+        id: module
+        run: |
+          if compgen -G 'infra/oci/terraform/*.tf' >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::OCI Terraform files are not present yet; validation skipped."
+          fi
+      - name: Check formatting
+        if: steps.module.outputs.exists == 'true'
+        run: terraform fmt -check -recursive infra/oci/terraform
+      - name: Initialize without a backend
+        if: steps.module.outputs.exists == 'true'
+        working-directory: infra/oci/terraform
+        run: terraform init -backend=false
+      - name: Validate
+        if: steps.module.outputs.exists == 'true'
+        working-directory: infra/oci/terraform
+        run: terraform validate
+
+  plan:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.plan
+    runs-on: ubuntu-latest
+    environment: oci-infrastructure
+    env:
+      OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+      OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+      OCI_COMPARTMENT_OCID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+      OCI_SSH_ALLOWED_CIDR: ${{ vars.OCI_SSH_ALLOWED_CIDR }}
+      OCI_REGION: ${{ vars.OCI_REGION || 'us-phoenix-1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: Verify plan inputs
+        run: |
+          test -f infra/oci/terraform/main.tf || { echo "::error::OCI Terraform module is missing"; exit 1; }
+          for name in OCI_TENANCY_OCID OCI_USER_OCID OCI_FINGERPRINT OCI_API_PRIVATE_KEY OCI_COMPARTMENT_OCID OCI_SSH_PUBLIC_KEY OCI_SSH_ALLOWED_CIDR; do
+            test -n "${!name}" || { echo "::error::$name is required"; exit 1; }
+          done
+      - name: Create OCI DEFAULT profile
+        run: |
+          install -m 700 -d "$HOME/.oci"
+          printf '%s\n' "$OCI_API_PRIVATE_KEY" > "$HOME/.oci/oci_api_key.pem"
+          chmod 600 "$HOME/.oci/oci_api_key.pem"
+          {
+            echo '[DEFAULT]'
+            echo "user=$OCI_USER_OCID"
+            echo "fingerprint=$OCI_FINGERPRINT"
+            echo "tenancy=$OCI_TENANCY_OCID"
+            echo "region=$OCI_REGION"
+            echo "key_file=$HOME/.oci/oci_api_key.pem"
+          } > "$HOME/.oci/config"
+          chmod 600 "$HOME/.oci/config"
+      - name: Plan
+        working-directory: infra/oci/terraform
+        run: |
+          printf '%s\n' "$OCI_SSH_PUBLIC_KEY" > "$RUNNER_TEMP/oci_deploy.pub"
+          terraform init
+          terraform plan -no-color \
+            -var="compartment_ocid=$OCI_COMPARTMENT_OCID" \
+            -var="ssh_allowed_cidr=$OCI_SSH_ALLOWED_CIDR" \
+            -var="ssh_public_key_path=$RUNNER_TEMP/oci_deploy.pub"
+      - name: Remove OCI credentials
+        if: always()
+        run: rm -rf "$HOME/.oci"
