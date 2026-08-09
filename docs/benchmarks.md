@@ -7,14 +7,14 @@ Measured against the live OCI demo at `https://ims.144.24.50.163.sslip.io` using
 | Date (UTC) | 2026-08-09 |
 | Tool | hey 0.1.5 |
 | Duration / concurrency | 30s / 25 |
-| Code SHA | `4dafc35` (Add composite indexes and accurate auth wording) |
-| Deploy run | [31293803693](https://github.com/ranjitha-rani/ims/actions/runs/31293803693) — **did not start** (self-hosted runner offline; `total_count: 0` runners) |
+| Code SHA (benchmarked) | `4dafc35` (Add composite indexes and accurate auth wording) |
+| Deploy | Manual SSH deploy of `2b2eaa2` to `144.24.50.163` (GitHub Actions run [31293803693](https://github.com/ranjitha-rani/ims/actions/runs/31293803693) never started — no self-hosted runners) |
 | Auth | JWT as `priya.sharma@example.com` for `/api/claims` and `/api/policies` |
-| Indexes (V3) | **Not verified on live DB** — Flyway `V3__composite_indexes.sql` is in `4dafc35` but the deploy that would apply it never acquired a runner |
+| Indexes (V3) | **Applied** — Flyway version `3` (`composite indexes`) succeeded; confirmed `ix_claim_customer_status_created`, `ix_claim_status_updated`, `ix_policy_customer_status_purchased`, `ix_policy_plan_status`, `ix_outbox_type_unpublished` in `pg_indexes` |
 
 ## Results
 
-All responses were HTTP 200.
+All responses were HTTP 200. Numbers below were captured before the SSH redeploy that applied Flyway V3; latency may improve slightly with the new indexes under load.
 
 | Endpoint | Req/sec | Avg | p50 | p95 | p99 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -46,5 +46,5 @@ Or use `scripts/load-test.sh` after setting `CUSTOMER_PASSWORD` (adjust header p
 
 ## Notes
 
-- Benchmarks ran against the **currently live** API because the post-`4dafc35` deploy stayed pending with no registered self-hosted GitHub Actions runners.
-- Until a successful deploy applies Flyway V3, composite indexes (`ix_claim_customer_status_created`, `ix_claim_status_updated`, `ix_policy_customer_status_purchased`, `ix_policy_plan_status`, `ix_outbox_type_unpublished`) may not be present on the live database.
+- Initial hey run used the live API while Actions deploy was stuck pending (no registered self-hosted runners).
+- A later manual SSH deploy of `2b2eaa2` rebuilt/restarted the API via `compose.oci.yaml` + eventing/observability profiles and applied Flyway V3 on the live Postgres.
