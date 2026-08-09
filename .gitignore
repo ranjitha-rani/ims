@@ -34,3 +34,7 @@ override.tf.json
 *.log
 __pycache__/
 *.py[cod]
+
+# Local-only performance notes (do not commit)
+docs/benchmarks.md
+docs/benchmarks.private.md
