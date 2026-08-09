@@ -45,7 +45,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     <div className="auth-page">
       <section className="auth-story">
         <div className="brand light"><span className="brand-mark"><ShieldCheck size={22} /></span>InsureFlow</div>
-        <div><p className="eyebrow">Insurance, made human</p><h1>Protection that moves at your pace.</h1><p>Manage policies and claims with one clear, secure workspace.</p></div>
+        <div><p className="eyebrow">Coverage, simplified</p><h1>Protection that moves at your pace.</h1><p>Manage policies and claims with one clear, secure workspace.</p></div>
         <p className="story-foot">Trusted coverage · Transparent claims · Helpful support</p>
       </section>
       <section className="auth-panel">
